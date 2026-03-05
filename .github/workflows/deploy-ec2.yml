@@ -24,9 +24,6 @@ jobs:
                   cd /home/ec2-user/demo-gh-action-cd-minimo
                   git pull
                   docker compose up -d --build
-                  sleep 5
                   docker compose ps
-                  sleep 5
                   docker compose logs --tail=30 api
-                  sleep 10
                   curl -fsS http://localhost/health

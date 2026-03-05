@@ -17,7 +17,7 @@ def get_db():
 
 @app.get('/health')
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "APP ok"})
 
 
 @app.get('/users')

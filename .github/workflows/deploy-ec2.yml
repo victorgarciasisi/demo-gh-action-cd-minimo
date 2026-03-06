@@ -54,17 +54,14 @@ jobs:
             sleep 5
             docker compose ps
 
-            HEALTH_RC=0
-            curl -fsS http://localhost/health >/dev/null 2>&1 || HEALTH_RC=$?
-
-            if [ "$HEALTH_RC" -eq 0 ]; then
+            if curl -fsS http://localhost/health >/dev/null 2>&1; then
               sync_to_backup
               echo "Deploy OK + backup actualizado"
             else
-              echo "Healthcheck KO (rc=${HEALTH_RC}). Iniciando restore de backup"
+              echo "Healthcheck KO. Iniciando restore de backup"
               if restore_from_backup; then
                 cd "$APP_DIR"
-                docker compose up -d --build
+                docker compose up -d --build --force-recreate
                 sleep 5
                 curl -fsS http://localhost/health
                 echo "Rollback OK desde backup"

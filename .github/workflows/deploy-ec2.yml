@@ -53,6 +53,107 @@ jobs:
 
             cd "$APP_DIR"
 
+            if [ ! -d "$BAK_DIR" ]; then
+              sync_to_backup
+              echo "Backup inicial creado en $BAK_DIR"
+            fi
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            docker compose up -d --build
+            sleep 5
+            docker compose ps
+
+            set +e
+            healthcheck
+            HEALTH_RC=$?
+            set -e
+
+            if [ "$HEALTH_RC" -eq 0 ]; then
+              sync_to_backup
+              echo "Deploy OK + backup actualizado"
+            else
+              echo "Healthcheck KO. Iniciando restore de backup"
+
+              if restore_from_backup; then
+                cd "$APP_DIR"
+                docker compose down
+                docker compose up -d --build --force-recreate
+                sleep 5
+
+                set +e
+                healthcheck
+                ROLLBACK_RC=$?
+                set -e
+
+                if [ "$ROLLBACK_RC" -eq 0 ]; then
+                  echo "Rollback OK desde backup"
+                else
+                  echo "Rollback ejecutado pero la app sigue sin responder"
+                  docker compose logs --tail=30 api
+                  exit 1
+                fi
+              else
+                exit 1
+              fi
+            fi
+
+            docker compose logs --tail=30 apiname: Deploy to EC2
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            APP_DIR="/home/ec2-user/demo-gh-action-cd-minimo"
+            BAK_DIR="/home/ec2-user/demo-gh-action-cd-minimo-bak"
+
+            sync_to_backup() {
+              rm -rf "$BAK_DIR"
+              mkdir -p "$BAK_DIR"
+              tar -C "$APP_DIR" --exclude='.git' -cf - . | tar -C "$BAK_DIR" -xf -
+            }
+
+            restore_from_backup() {
+              if [ ! -d "$BAK_DIR" ]; then
+                echo "No existe backup para rollback"
+                return 1
+              fi
+              find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+              tar -C "$BAK_DIR" -cf - . | tar -C "$APP_DIR" -xf -
+            }
+
+            healthcheck() {
+              for i in 1 2 3 4 5; do
+                if curl -fsS http://localhost/health >/dev/null 2>&1; then
+                  return 0
+                fi
+                echo "Healthcheck intento $i/5 fallido; reintentando..."
+                sleep 3
+              done
+              return 1
+            }
+
+            cd "$APP_DIR"
+
             # Seed inicial: si no existe backup, lo creamos con el estado actual.
             if [ ! -d "$BAK_DIR" ]; then
               sync_to_backup

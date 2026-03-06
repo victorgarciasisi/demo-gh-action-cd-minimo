@@ -1,8 +1,7 @@
-name: Deploy to EC2
-
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -20,13 +19,25 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script_stop: true
           script: |
-                  set -e
-                  cd /home/ec2-user/demo-gh-action-cd-minimo
-                  git pull
-                  docker compose up -d --build
-                  sleep 5
-                  docker compose ps
-                  sleep 5
-                  docker compose logs --tail=30 api
-                  sleep 10
-                  curl -fsS http://localhost/health
+            set -e
+            APP_DIR="/home/ec2-user/demo-gh-action-cd-minimo"
+            BAK_DIR="/home/ec2-user/demo-gh-action-cd-minimo-bak"
+
+            cd "$APP_DIR"
+
+            git pull
+            docker compose up -d --build
+            sleep 5
+            docker compose ps
+            sleep 5
+            docker compose logs --tail=30 api
+            sleep 10
+
+            if curl -fsS http://localhost/health >/dev/null 2>&1; then
+              rm -rf "$BAK_DIR"
+              cp -a "$APP_DIR" "$BAK_DIR"
+              echo "Deploy OK + backup actualizado"
+            else
+              echo "Healthcheck KO. Backup no actualizado"
+              exit 1
+            fi

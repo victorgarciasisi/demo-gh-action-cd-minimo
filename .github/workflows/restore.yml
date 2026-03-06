@@ -1,4 +1,4 @@
-ame: Restore from Backup (manual)
+name: Restore from Backup (manual)
 
 on:
   workflow_dispatch:

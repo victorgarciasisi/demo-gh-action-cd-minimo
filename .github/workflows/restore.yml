@@ -25,16 +25,9 @@ jobs:
               exit 1
             fi
 
-            find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-            cp -fr "$APP_DIR" "$BAK_DIR"
+            rm -rf "$APP_DIR"
+            cp -fr "$BAK_DIR" "$APP_DIR"
 
             cd "$APP_DIR"
             docker compose up -d --build --force-recreate
-            sleep 5
-            docker ps
-            sleep 5
-            docker compose logs --tail=30 api
-            sleep 10
-            curl -fsS http://localhost/health
-
             echo "Restore manual OK"

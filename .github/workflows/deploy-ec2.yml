@@ -1,3 +1,4 @@
+name: Deploy to EC2 + Backup
 on:
   push:
     branches: ["main"]

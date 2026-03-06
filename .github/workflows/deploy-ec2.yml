@@ -40,6 +40,17 @@ jobs:
               tar -C "$BAK_DIR" -cf - . | tar -C "$APP_DIR" -xf -
             }
 
+            healthcheck() {
+              for i in 1 2 3 4 5; do
+                if curl -fsS http://localhost/health >/dev/null 2>&1; then
+                  return 0
+                fi
+                echo "Healthcheck intento $i/5 fallido; reintentando..."
+                sleep 3
+              done
+              return 1
+            }
+
             cd "$APP_DIR"
 
             # Seed inicial: si no existe backup, lo creamos con el estado actual.
@@ -48,13 +59,15 @@ jobs:
               echo "Backup inicial creado en $BAK_DIR"
             fi
 
-            git pull --ff-only origin main
+            # Importante: evita que el working tree sucio tras un rollback rompa el deploy
+            git fetch origin main
+            git reset --hard origin/main
 
             docker compose up -d --build
             sleep 5
             docker compose ps
 
-            if curl -fsS http://localhost/health >/dev/null 2>&1; then
+            if healthcheck; then
               sync_to_backup
               echo "Deploy OK + backup actualizado"
             else
@@ -63,8 +76,14 @@ jobs:
                 cd "$APP_DIR"
                 docker compose up -d --build --force-recreate
                 sleep 5
-                curl -fsS http://localhost/health
-                echo "Rollback OK desde backup"
+
+                if healthcheck; then
+                  echo "Rollback OK desde backup"
+                else
+                  echo "Rollback ejecutado pero la app sigue sin responder"
+                  docker compose logs --tail=30 api
+                  exit 1
+                fi
               else
                 exit 1
               fi

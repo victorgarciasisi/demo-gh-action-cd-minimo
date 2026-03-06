@@ -26,6 +26,14 @@ jobs:
             BAK_DIR="/home/ec2-user/demo-gh-action-cd-minimo-bak"
 
             cd "$APP_DIR"
+
+            # Seed inicial: si no existe backup, lo creamos con el estado actual.
+            if [ ! -d "$BAK_DIR" ]; then
+              mkdir -p "$BAK_DIR"
+              cp -a "$APP_DIR/." "$BAK_DIR/"
+              echo "Backup inicial creado en $BAK_DIR"
+            fi
+
             git pull --ff-only origin main
 
             docker compose up -d --build
@@ -37,12 +45,18 @@ jobs:
 
             if [ "$HEALTH_RC" -eq 0 ]; then
               rm -rf "$BAK_DIR"
-              cp -a "$APP_DIR" "$BAK_DIR"
+              mkdir -p "$BAK_DIR"
+              cp -a "$APP_DIR/." "$BAK_DIR/"
               echo "Deploy OK + backup actualizado"
             else
               echo "Healthcheck KO (rc=${HEALTH_RC}). Iniciando restore de backup"
               if [ -d "$BAK_DIR" ]; then
-                rsync -a --delete "$BAK_DIR/" "$APP_DIR/"
+                if command -v rsync >/dev/null 2>&1; then
+                  rsync -a --delete "$BAK_DIR/" "$APP_DIR/"
+                else
+                  find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+                  cp -a "$BAK_DIR/." "$APP_DIR/"
+                fi
                 cd "$APP_DIR"
                 docker compose up -d --build
                 sleep 5

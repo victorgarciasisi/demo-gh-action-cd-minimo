@@ -39,4 +39,7 @@ jobs:
               rm -rf "$BAK_DIR"
               cp -a "$APP_DIR" "$BAK_DIR"
               echo "Deploy OK + backup actualizado"
+            else
+              echo "Healthcheck KO. Backup no actualizado"
+              exit 1
             fi

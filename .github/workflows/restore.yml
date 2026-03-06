@@ -31,10 +31,10 @@ jobs:
             cd "$APP_DIR"
             docker compose up -d --build --force-recreate
             sleep 5
-			docker ps
-			sleep 5
-			docker compose logs --tail=30 api
-			sleep 10
+            docker ps
+            sleep 5
+            docker compose logs --tail=30 api
+            sleep 10
             curl -fsS http://localhost/health
 
             echo "Restore manual OK"

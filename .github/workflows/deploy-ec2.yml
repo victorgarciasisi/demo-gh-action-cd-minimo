@@ -22,23 +22,10 @@ jobs:
           script_stop: true
           script: |
                   set -e
-                  cd /home/ec2-user/demo-gh-action-cd-minimo
-
-                  PREV_SHA=$(git rev-parse HEAD)
-                  git pull --ff-only origin main
-
+                  cd ~/proyecto-docker
                   docker compose up -d --build
-                  sleep 5
                   docker compose ps
-
-                  if curl -fsS http://localhost/health; then
-                  echo "Deploy OK en $(git rev-parse --short HEAD)"
-                  else
-                  echo "Healthcheck KO. Rollback a ${PREV_SHA}"
-                  git reset --hard "$PREV_SHA"
-                  docker compose up -d --build
-                  sleep 5
+                  docker compose logs --tail=30 api
                   curl -fsS http://localhost/health
-                  fi
 
                   docker compose logs --tail=30 api

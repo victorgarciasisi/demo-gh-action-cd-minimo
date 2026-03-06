@@ -51,15 +51,16 @@ jobs:
             }
 
             healthcheck() {
+              HC_OK=1
               for i in 1 2 3 4 5; do
                 if curl -fsS http://localhost/health >/dev/null 2>&1; then
                   echo "Healthcheck OK en intento $i/5"
-                  return 0
+                  HC_OK=0
+                  break
                 fi
                 echo "Healthcheck intento $i/5 fallido; reintentando..."
                 sleep 3
               done
-              return 1
             }
 
             log "CD APP_DIR"
@@ -83,13 +84,10 @@ jobs:
             docker compose ps
 
             log "HEALTHCHECK POST-DEPLOY"
-            set +e
             healthcheck
-            HEALTH_RC=$?
-            set -e
-            echo "HEALTH_RC=$HEALTH_RC"
+            echo "HEALTH_RC=$HC_OK"
 
-            if [ "$HEALTH_RC" -eq 0 ]; then
+            if [ "$HC_OK" -eq 0 ]; then
               sync_to_backup
               echo "Deploy OK + backup actualizado"
             else
@@ -104,13 +102,10 @@ jobs:
                 docker compose ps
 
                 log "HEALTHCHECK POST-ROLLBACK"
-                set +e
                 healthcheck
-                ROLLBACK_RC=$?
-                set -e
-                echo "ROLLBACK_RC=$ROLLBACK_RC"
+                echo "ROLLBACK_RC=$HC_OK"
 
-                if [ "$ROLLBACK_RC" -eq 0 ]; then
+                if [ "$HC_OK" -eq 0 ]; then
                   echo "Rollback OK desde backup"
                 else
                   echo "Rollback ejecutado pero la app sigue sin responder"
@@ -119,7 +114,7 @@ jobs:
                   exit 1
                 fi
               else
-                echo "Restore_from_backup ha fallado"
+                echo "restore_from_backup ha fallado"
                 exit 1
               fi
             fi

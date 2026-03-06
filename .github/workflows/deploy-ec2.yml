@@ -25,24 +25,35 @@ jobs:
             APP_DIR="/home/ec2-user/demo-gh-action-cd-minimo"
             BAK_DIR="/home/ec2-user/demo-gh-action-cd-minimo-bak"
 
+            log() {
+              echo
+              echo "========== $1 =========="
+            }
+
             sync_to_backup() {
+              log "SYNC BACKUP"
               rm -rf "$BAK_DIR"
               mkdir -p "$BAK_DIR"
               tar -C "$APP_DIR" --exclude='.git' -cf - . | tar -C "$BAK_DIR" -xf -
+              echo "Backup actualizado en $BAK_DIR"
             }
 
             restore_from_backup() {
+              log "RESTORE BACKUP"
               if [ ! -d "$BAK_DIR" ]; then
                 echo "No existe backup para rollback"
                 return 1
               fi
+              ls -la "$BAK_DIR"
               find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
               tar -C "$BAK_DIR" -cf - . | tar -C "$APP_DIR" -xf -
+              echo "Restore completado"
             }
 
             healthcheck() {
               for i in 1 2 3 4 5; do
                 if curl -fsS http://localhost/health >/dev/null 2>&1; then
+                  echo "Healthcheck OK en intento $i/5"
                   return 0
                 fi
                 echo "Healthcheck intento $i/5 fallido; reintentando..."
@@ -51,24 +62,32 @@ jobs:
               return 1
             }
 
+            log "CD APP_DIR"
             cd "$APP_DIR"
+            pwd
+            ls -la
 
             if [ ! -d "$BAK_DIR" ]; then
               sync_to_backup
               echo "Backup inicial creado en $BAK_DIR"
             fi
 
+            log "GIT UPDATE"
             git fetch origin main
             git reset --hard origin/main
+            git rev-parse HEAD
 
-            docker compose up -d --build
+            log "DOCKER DEPLOY"
+            docker compose up -d --build --force-recreate
             sleep 5
             docker compose ps
 
+            log "HEALTHCHECK POST-DEPLOY"
             set +e
             healthcheck
             HEALTH_RC=$?
             set -e
+            echo "HEALTH_RC=$HEALTH_RC"
 
             if [ "$HEALTH_RC" -eq 0 ]; then
               sync_to_backup
@@ -77,26 +96,34 @@ jobs:
               echo "Healthcheck KO. Iniciando restore de backup"
 
               if restore_from_backup; then
+                log "DOCKER ROLLBACK"
                 cd "$APP_DIR"
                 docker compose down
                 docker compose up -d --build --force-recreate
                 sleep 5
+                docker compose ps
 
+                log "HEALTHCHECK POST-ROLLBACK"
                 set +e
                 healthcheck
                 ROLLBACK_RC=$?
                 set -e
+                echo "ROLLBACK_RC=$ROLLBACK_RC"
 
                 if [ "$ROLLBACK_RC" -eq 0 ]; then
                   echo "Rollback OK desde backup"
                 else
                   echo "Rollback ejecutado pero la app sigue sin responder"
-                  docker compose logs --tail=30 api
+                  docker compose logs --tail=100 api
+                  docker compose logs --tail=100 nginx
                   exit 1
                 fi
               else
+                echo "Restore_from_backup ha fallado"
                 exit 1
               fi
             fi
 
-            docker compose logs --tail=30 api
+            log "FINAL LOGS"
+            docker compose logs --tail=100 api
+            docker compose logs --tail=100 nginx

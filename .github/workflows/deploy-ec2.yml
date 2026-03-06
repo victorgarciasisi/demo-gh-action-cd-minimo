@@ -25,12 +25,26 @@ jobs:
             APP_DIR="/home/ec2-user/demo-gh-action-cd-minimo"
             BAK_DIR="/home/ec2-user/demo-gh-action-cd-minimo-bak"
 
+            sync_to_backup() {
+              rm -rf "$BAK_DIR"
+              mkdir -p "$BAK_DIR"
+              tar -C "$APP_DIR" --exclude='.git' -cf - . | tar -C "$BAK_DIR" -xf -
+            }
+
+            restore_from_backup() {
+              if [ ! -d "$BAK_DIR" ]; then
+                echo "No existe backup para rollback"
+                return 1
+              fi
+              find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+              tar -C "$BAK_DIR" -cf - . | tar -C "$APP_DIR" -xf -
+            }
+
             cd "$APP_DIR"
 
             # Seed inicial: si no existe backup, lo creamos con el estado actual.
             if [ ! -d "$BAK_DIR" ]; then
-              mkdir -p "$BAK_DIR"
-              cp -a "$APP_DIR/." "$BAK_DIR/"
+              sync_to_backup
               echo "Backup inicial creado en $BAK_DIR"
             fi
 
@@ -44,26 +58,17 @@ jobs:
             curl -fsS http://localhost/health >/dev/null 2>&1 || HEALTH_RC=$?
 
             if [ "$HEALTH_RC" -eq 0 ]; then
-              rm -rf "$BAK_DIR"
-              mkdir -p "$BAK_DIR"
-              cp -a "$APP_DIR/." "$BAK_DIR/"
+              sync_to_backup
               echo "Deploy OK + backup actualizado"
             else
               echo "Healthcheck KO (rc=${HEALTH_RC}). Iniciando restore de backup"
-              if [ -d "$BAK_DIR" ]; then
-                if command -v rsync >/dev/null 2>&1; then
-                  rsync -a --delete "$BAK_DIR/" "$APP_DIR/"
-                else
-                  find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-                  cp -a "$BAK_DIR/." "$APP_DIR/"
-                fi
+              if restore_from_backup; then
                 cd "$APP_DIR"
                 docker compose up -d --build
                 sleep 5
                 curl -fsS http://localhost/health
                 echo "Rollback OK desde backup"
               else
-                echo "No existe backup para rollback"
                 exit 1
               fi
             fi

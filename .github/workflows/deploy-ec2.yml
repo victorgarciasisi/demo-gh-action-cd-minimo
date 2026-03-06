@@ -32,18 +32,12 @@ jobs:
             sleep 5
             docker compose ps
 
-            # Evita que set -e corte el script antes de entrar en rollback.
-            set +e
-            curl -fsS http://localhost/health
-            HEALTH_RC=$?
-            set -e
-
-            if [ "$HEALTH_RC" -eq 0 ]; then
+            if curl -fsS http://localhost/health; then
               rm -rf "$BAK_DIR"
               cp -a "$APP_DIR" "$BAK_DIR"
               echo "Deploy OK + backup actualizado"
             else
-              echo "Healthcheck KO (rc=${HEALTH_RC}). Iniciando restore de backup"
+              echo "Healthcheck KO. Iniciando restore de backup"
               if [ -d "$BAK_DIR" ]; then
                 rsync -a --delete "$BAK_DIR/" "$APP_DIR/"
                 cd "$APP_DIR"
